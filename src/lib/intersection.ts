@@ -1,6 +1,6 @@
-export function intersection<T extends string>(
-    ...[first, ...rest]: ReadonlyArray<ReadonlyArray<T>>
-): T[] {
+export function intersection<T extends string>([first, ...rest]: ReadonlyArray<
+    ReadonlyArray<T>
+>): T[] {
     if (!first) return []
 
     if (!rest.length) return [...first]

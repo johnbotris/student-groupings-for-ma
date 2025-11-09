@@ -2,6 +2,8 @@ import type { Group } from "../lib/group.ts"
 import type { StudentId } from "../lib/studentId.ts"
 import type { TeacherId } from "../lib/teacherId.ts"
 import type { School } from "../lib/school.ts"
+import { intersection } from "../lib/intersection.ts"
+import { useDebugLog } from "../lib/useDebugLog.ts"
 
 interface ResultsProps {
     groupings: Group[]
@@ -23,49 +25,62 @@ export default function Results({
     school,
 }: ResultsProps) {
     return (
-        <ul className={"text-sm max-w-md flex flex-col gap-2"}>
+        <ul className={"text-sm  flex flex-col flex-wrap max-h-sm gap-0.5"}>
             {groupings.map(g => {
-                return (
-                    <li key={g.join(", ")} className={"px-1 py-2 "}>
-                        <ul className={"flex flex-row flex-wrap gap-2"}>
-                            {g.map(member => {
-                                const selected =
-                                    member === selectedStudent ||
-                                    member === selectedTeacher
+                const numPossibleCandidates = 0
 
-                                const onSelect = () => {
-                                    if (school.isStudent(member)) {
-                                        if (member === selectedStudent) {
-                                            selectStudent(null)
-                                        } else {
-                                            selectStudent(member)
-                                        }
-                                    } else if (school.isTeacher(member)) {
-                                        if (member === selectedTeacher) {
-                                            selectTeacher(null)
-                                        } else {
-                                            selectTeacher(member)
+                return (
+                    <div className={"flex flex-row items-center"}>
+                        <span>{numPossibleCandidates}</span>
+                        <li key={g.join(", ")} className={"px-1 py-2 "}>
+                            <ul className={"flex flex-row flex-wrap gap-2"}>
+                                {g.map(member => {
+                                    const selected =
+                                        member === selectedStudent ||
+                                        member === selectedTeacher
+
+                                    const onSelect = () => {
+                                        if (school.isStudent(member)) {
+                                            if (member === selectedStudent) {
+                                                selectStudent(null)
+                                            } else {
+                                                selectStudent(member)
+                                            }
+                                        } else if (school.isTeacher(member)) {
+                                            if (member === selectedTeacher) {
+                                                selectTeacher(null)
+                                            } else {
+                                                selectTeacher(member)
+                                            }
                                         }
                                     }
-                                }
-                                const selectedClass = school.isStudent(member)
-                                    ? "bg-green-50"
-                                    : "bg-yellow-50"
-                                const bgClass = selected
-                                    ? selectedClass
-                                    : "bg-blue-50"
+                                    const selectedClass = school.isStudent(
+                                        member,
+                                    )
+                                        ? "bg-green-100"
+                                        : "bg-yellow-100"
 
-                                return (
-                                    <li
-                                        onClick={onSelect}
-                                        className={` cursor-pointer p-2 flex flex-row gap-1 ${bgClass}`}
-                                    >
-                                        <span>{member}</span>
-                                    </li>
-                                )
-                            })}
-                        </ul>
-                    </li>
+                                    const unselectedClass = school.isStudent(
+                                        member,
+                                    )
+                                        ? "bg-green-50"
+                                        : "bg-yellow-50"
+                                    const bgClass = selected
+                                        ? selectedClass
+                                        : unselectedClass
+
+                                    return (
+                                        <li
+                                            onClick={onSelect}
+                                            className={` cursor-pointer p-1 flex flex-row gap-1 text-xs ${bgClass}`}
+                                        >
+                                            <span>{member}</span>
+                                        </li>
+                                    )
+                                })}
+                            </ul>
+                        </li>
+                    </div>
                 )
             })}
         </ul>

@@ -1,12 +1,8 @@
 import type { ITeacher, School } from "../lib/school.ts"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import type { TeacherId } from "../lib/teacherId.ts"
 import type { StudentId } from "../lib/studentId.ts"
-import { intersection } from "../lib/intersection.ts"
-import { useDebugLog } from "../lib/useDebugLog.ts"
-import { getId } from "../lib/getId.ts"
-import { uniqueBy } from "../lib/uniqueBy.ts"
-import { isNotNull } from "../lib/isNotNull.ts"
+import { count } from "../lib/count.ts"
 
 interface StatsProps {
     school: School
@@ -14,102 +10,60 @@ interface StatsProps {
 }
 
 export default function Workspace({ school, createGrouping }: StatsProps) {
-    interface List {
-        teacher: ITeacher | null
-        teachers: ITeacher[]
-        candidateStudents: StudentId[]
-    }
+    const [teachers, setTeachers] = useState<TeacherId[]>([])
+    const [students, setStudents] = useState<StudentId[]>([])
 
-    const [lists, setLists] = useState<List[]>([])
+    const sortedTeachers = school
+        .getTeachers()
+        .toSorted((a, b) => b.students.length - a.students.length)
 
-    useEffect(() => {
-        setLists([
-            {
-                teacher: null,
-                teachers: school.getTeachers(),
-                candidateStudents: [...school.getStudentIds()],
-            },
-        ])
-    }, [school])
+    const selectionSize = teachers.length + students.length
 
-    const candidates = lists.at(-1)?.candidateStudents ?? []
+    const shouldHaveAtLeast = Math.round(teachers.length / 2)
+
+    const candidateStudents = school.getStudentIds()
+
+    const sortedCandidates = [...candidateStudents].toSorted((a, b) => {
+        return (
+            count(teachers, t =>
+                school.getTeacher(t).students.some(s => s.id === b),
+            ) -
+            count(teachers, t =>
+                school.getTeacher(t).students.some(s => s.id === a),
+            )
+        )
+    })
 
     function onAcceptClicked() {
-        const teachers = lists
-            .map(l => l.teacher)
-            .filter(isNotNull)
-            .map(t => t.id)
-        const students = lists.at(-1)?.candidateStudents ?? []
         createGrouping(teachers, students)
+        setStudents([])
+        setTeachers([])
     }
 
-    useDebugLog({ lists })
     return (
         <div className={"flex flex-row gap-2"}>
-            {lists.map(({ teacher, teachers, candidateStudents }, idx) => {
-                function updateSelection(teacherId: TeacherId | null) {
-                    const newTeacher = teacherId
-                        ? school.getTeacher(teacherId)
-                        : null
-
-                    const prefix = lists.slice(0, idx)
-
-                    const thisEntry = {
-                        teacher: newTeacher,
-                        teachers,
-                        candidateStudents,
+            <TeacherList
+                items={sortedTeachers.map(teacher => {
+                    const onClick = () => {
+                        if (teachers.includes(teacher.id)) {
+                            setTeachers(teachers.filter(t => t !== teacher.id))
+                        } else {
+                            setTeachers([...teachers, teacher.id])
+                        }
                     }
-
-                    const newEntry = newTeacher
-                        ? (() => {
-                              const newCandidateStudents = intersection(
-                                  newTeacher.students.map(getId),
-                                  candidateStudents,
-                              )
-
-                              const newCandidateTeachers = uniqueBy(
-                                  newCandidateStudents.flatMap(studentId =>
-                                      [
-                                          ...school.getTeacherIds({
-                                              studentId,
-                                          }),
-                                      ].map(t => school.getTeacher(t)),
-                                  ),
-                                  getId,
-                              ).filter(
-                                  t =>
-                                      !lists.some(
-                                          list =>
-                                              list.teacher?.id === t.id ||
-                                              t.id === newTeacher.id,
-                                      ),
-                              )
-
-                              return [
-                                  {
-                                      teacher: null,
-                                      teachers: newCandidateTeachers,
-                                      candidateStudents: newCandidateStudents,
-                                  },
-                              ]
-                          })()
-                        : []
-
-                    console.debug(prefix, thisEntry, newEntry)
-                    setLists([...prefix, thisEntry, ...newEntry])
-                }
-
-                return (
-                    <TeacherList
-                        key={`${teacher?.id}`}
-                        teachers={teachers}
-                        selectedTeacherId={teacher?.id ?? null}
-                        onTeacherSelected={updateSelection}
-                        school={school}
-                        candidateStudents={candidateStudents}
-                    />
-                )
-            })}
+                    return {
+                        teacher,
+                        value: school.getStudentIds({
+                            teacherId: teacher.id,
+                        }).size,
+                        state: teachers.includes(teacher.id)
+                            ? "selected"
+                            : null,
+                        onClick,
+                    }
+                })}
+                school={school}
+            />
 
             <div className={"flex flex-col w-fit gap-2"}>
                 <button
@@ -119,58 +73,80 @@ export default function Workspace({ school, createGrouping }: StatsProps) {
                         "rounded-md border hover:bg-gray-100 cursor-pointer"
                     }
                 >
-                    accept
+                    accept {selectionSize}
                 </button>
-                <StudentsList students={candidates} />
+                <StudentsList
+                    school={school}
+                    items={sortedCandidates.map(studentId => {
+                        let meetsCriteria = false
+                        if (
+                            count(teachers, t =>
+                                school
+                                    .getTeacher(t)
+                                    .students.some(s => s.id === studentId),
+                            ) >= shouldHaveAtLeast
+                        ) {
+                            meetsCriteria = true
+                        }
+
+                        const state = students.includes(studentId)
+                            ? "selected"
+                            : meetsCriteria
+                              ? "meetsCriteria"
+                              : null
+
+                        const onClick = () => {
+                            if (state === "selected") {
+                                setStudents(
+                                    students.filter(s => s !== studentId),
+                                )
+                            } else {
+                                setStudents([...students, studentId])
+                            }
+                        }
+
+                        return {
+                            studentId,
+                            value: 0,
+                            onClick,
+                            state,
+                        }
+                    })}
+                />
             </div>
         </div>
     )
 }
 
-interface TeacherListProps {
-    teachers: ITeacher[]
-    selectedTeacherId: TeacherId | null
-    onTeacherSelected: (id: TeacherId | null) => void
-    school: School
-    candidateStudents: StudentId[]
+interface TeacherListItem {
+    teacher: ITeacher
+    value: number
+    state: "selected" | null
+    onClick: () => void
 }
 
-function TeacherList({
-    teachers,
-    selectedTeacherId,
-    onTeacherSelected,
-    school,
-    candidateStudents,
-}: TeacherListProps) {
-    const teachersSortedByNeighbourCount = teachers.toSorted(
-        (a, b) => a.neighbours.length - b.neighbours.length,
-    )
+interface TeacherListProps {
+    school: School
+    items: TeacherListItem[]
+}
 
+function TeacherList({ school, items }: TeacherListProps) {
     return (
-        <dl className={"flex flex-col w-fit"}>
-            {teachersSortedByNeighbourCount.map(teacher => {
+        <dl className={"flex flex-col flex-wrap w-fit"}>
+            {items.map(item => {
                 const bgClass =
-                    selectedTeacherId === teacher.id
+                    item.state === "selected"
                         ? "bg-emerald-200"
-                        : teacher?.neighbours.some(
-                                t => t.id === selectedTeacherId,
-                            )
-                          ? "bg-amber-100"
-                          : "odd:bg-gray-100"
-
-                const candiatesIfSelected = intersection(
-                    candidateStudents,
-                    teacher.students.map(getId),
-                )
+                        : "odd:bg-gray-100"
 
                 return (
                     <div
-                        key={teacher.id}
-                        onClick={() => onTeacherSelected(teacher.id)}
-                        className={`grid grid-cols-5 gap-8 px-2 ${bgClass}`}
+                        key={item.teacher.id}
+                        onClick={() => item.onClick()}
+                        className={`grid grid-cols-5 gap-8 px-2 cursor-pointer ${bgClass}`}
                     >
-                        <dt className={"col-span-4"}>{teacher.id}</dt>
-                        <dd>{candiatesIfSelected.length}</dd>
+                        <dt className={"col-span-4"}>{item.teacher.id}</dt>
+                        <dd>{item.value}</dd>
                     </div>
                 )
             })}
@@ -178,20 +154,36 @@ function TeacherList({
     )
 }
 
-interface StudentsListProps {
-    students: StudentId[]
+interface StudentListItem {
+    studentId: string
+    value: number
+    onClick: () => void
+    state: "selected" | "meetsCriteria" | null
 }
 
-function StudentsList({ students }: StudentsListProps) {
+interface StudentsListProps {
+    school: School
+    items: StudentListItem[]
+}
+
+function StudentsList({ items, school }: StudentsListProps) {
     return (
-        <ul className={"flex flex-col w-fit"}>
-            {students.map(student => {
+        <ul className={"flex flex-col flex-wrap w-fit"}>
+            {items.map(item => {
+                const bgClass = item.state
+                    ? {
+                          selected: "bg-blue-300",
+                          meetsCriteria: "bg-yellow-50 odd:bg-yellow-100",
+                      }[item.state]
+                    : "odd:bg-blue-50"
+
                 return (
                     <div
-                        key={student}
-                        className={`px-2  bg-blue-50 odd:bg-blue-100 text-gray-500`}
+                        onClick={item.onClick}
+                        key={item.studentId}
+                        className={`px-2  ${bgClass} cursor-pointer`}
                     >
-                        <li className={"col-span-4"}>{student}</li>
+                        <li className={"col-span-4"}>{item.studentId}</li>
                     </div>
                 )
             })}

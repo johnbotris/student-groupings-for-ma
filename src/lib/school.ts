@@ -33,6 +33,9 @@ export interface IStudent {
 }
 
 export class School {
+    public readonly numTeachers: number
+    public readonly numStudents: number
+
     private constructor(
         private readonly teacherToStudent: ReadonlyMap<
             TeacherId,
@@ -42,7 +45,10 @@ export class School {
             StudentId,
             Set<TeacherId>
         >,
-    ) {}
+    ) {
+        this.numTeachers = this.teacherToStudent.size
+        this.numStudents = this.studentToTeacher.size
+    }
 
     static create(pairs: Pairing[]): School {
         const teacherToStudent = new Map<TeacherId, Set<StudentId>>()
@@ -93,6 +99,14 @@ export class School {
                     new Map(studentToTeacher.map(([k, v]) => [k, new Set(v)])),
                 ),
         )
+    }
+
+    get teachers() {
+        return [...this.teacherToStudent.keys()].map(t => this.getTeacher(t))
+    }
+
+    get students() {
+        return [...this.studentToTeacher.keys()].map(s => this.getStudent(s))
     }
 
     without({
@@ -158,7 +172,7 @@ export class School {
         return this.studentToTeacher.has(s as StudentId)
     }
 
-    isTeacher(t: string): s is TeacherId {
+    isTeacher(t: string): t is TeacherId {
         return this.teacherToStudent.has(t as TeacherId)
     }
 }

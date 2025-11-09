@@ -1,9 +1,14 @@
-import type { TeacherId } from "./teacherId.ts"
 import { type ITeacher, School } from "./school.ts"
 import type { Group } from "./group.ts"
+import { pickRandom } from "./pickRandom.ts"
+import { findMin } from "./findMin.ts"
+import { intersection } from "./intersection.ts"
+import { shuffle } from "./shuffle.ts"
+import { findMax } from "./findMax.ts"
+import { intersectionBy } from "./intersectionBy.ts"
 
 interface Opts {
-    teachersPerGroup?: number
+    teachersPerGroup: number
 }
 
 /**
@@ -19,40 +24,53 @@ interface Opts {
  */
 export function createGroupings(
     school: School,
-    { teachersPerGroup }: Opts = {},
+    { teachersPerGroup }: Opts,
 ): Group[] {
-    const groups = createTeacherGroups(
-        school.getTeachers(),
-        teachersPerGroup ?? 4,
-    )
+    // pick a random teacher
+    // find a teacher with the least amount of overlap
+    // find another teacher with the least amount of overlap
+    // etc
+    // until the group size has been reached
 
-    console.debug("teacher groups", groups)
+    const teacherGroups: ITeacher[][] = []
 
-    const result: Group[] = []
-    return result
-}
+    const numGroups = Math.floor(school.numTeachers / teachersPerGroup)
 
-function createTeacherGroups(
-    teachers: ITeacher[],
-    perGroup: number,
-): TeacherId[][] {
-    const sortedByNeighbourCount = teachers
-        .map(teacher => ({
-            id: teacher.id,
-            neighbours: teacher.neighbours,
-            teacher,
-        }))
-        .toSorted((a, b) => a.neighbours.length - b.neighbours.length)
+    const teachers = school.teachers
+    for (let i = 0; i < numGroups; ++i) {
+        if (teacherGroups.length === 0) {
+            teacherGroups.push([pickRandom(school.teachers)!])
+        } else {
+            const bestChoice = findMin(shuffle(teachers), t => {
+                const students = [...teacherGroups.flat(), t].map(t =>
+                    t.students.map(s => s.id),
+                )
 
-    const candidates = new Set(teachers.map(t => t.id))
+                return intersection(students).length
+            })
 
-    const groups: TeacherId[][] = []
+            if (!bestChoice) throw new Error("something borked")
 
-    for (const t of sortedByNeighbourCount) {
-        if (!candidates.has(t.id)) {
-            continue
+            teacherGroups.push([bestChoice])
         }
     }
 
-    return groups
+    while (teachers.length > 0) {
+        const teacher = teachers.pop()!
+
+        const bestChoice = findMax(teacherGroups, group => {
+            const multiplier =
+                group.length < teachersPerGroup ? 1 : Number.MIN_VALUE // 1 / Math.sqrt(group.length * 4)
+
+            const students = [...group.map(t => t.students), teacher.students]
+
+            return intersectionBy(students, s => s.id).length * multiplier
+        })
+
+        if (!bestChoice) throw new Error("something borked")
+
+        bestChoice.push(teacher)
+    }
+
+    return teacherGroups.map(g => g.map(t => t.id))
 }
