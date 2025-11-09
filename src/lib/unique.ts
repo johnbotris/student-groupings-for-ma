@@ -1,3 +1,3 @@
-export function unique<T>(arr: readonly T[]): T[] {
+export function unique<T extends string>(arr: readonly T[]): T[] {
     return [...new Set(arr)]
 }

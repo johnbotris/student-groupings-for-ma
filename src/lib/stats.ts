@@ -1,4 +1,4 @@
-import type { School } from "./school.ts"
+import School from "./school.ts"
 
 export class Stats {
     private school: School

@@ -1,7 +1,6 @@
 import * as XLSX from "xlsx"
-import { type TeacherId, teacherId } from "./teacherId.ts"
-import { type StudentId, studentId } from "./studentId.ts"
-import type { Pairing } from "./pairing.ts"
+import { teacherId } from "./teacherId.ts"
+import { studentId } from "./studentId.ts"
 import { unique } from "./unique.ts"
 import type { WorkbookData } from "./workbookData.ts"
 
@@ -41,19 +40,25 @@ export function parseStudentWorkbook(data: ArrayBuffer): WorkbookData {
 
     const teacherName = (student: StudentRow) =>
         teacherId(
-            `${student["Surname"]}, ${student["First Name"]} ${student["Middle Name"] ?? ""}`,
+            student["Middle Name"]
+                ? `${student["First Name"]} ${student["Middle Name"]} ${student["Surname"]}`
+                : `${student["First Name"]} ${student["Surname"]}`,
         )
 
     const studentName = (student: StudentRow) =>
         studentId(
-            `${student["Student Last Name"]}, ${student["Student First Name"]}`,
+            `${student["Student First Name"]} ${student["Student Last Name"]}`,
         )
 
     return {
-        teachers: unique(students.map(teacherName)),
+        teachers: unique(
+            students.map(teacherName).filter(name => name !== "Study Period"),
+        ),
         students: unique(students.map(studentName)),
-        pairings: students.map(student => {
-            return [teacherName(student), studentName(student)] as const
-        }),
+        pairings: students
+            .map(student => {
+                return [teacherName(student), studentName(student)] as const
+            })
+            .filter(([teacher, _]) => teacher !== "Study Period"),
     }
 }

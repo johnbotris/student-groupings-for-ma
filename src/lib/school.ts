@@ -1,103 +1,9 @@
 import { type StudentId } from "./studentId.ts"
 import { type TeacherId } from "./teacherId.ts"
 import type { Pairing } from "./pairing.ts"
-import { unique } from "./unique.ts"
 import { uniqueBy } from "./uniqueBy.ts"
+import { cloneMapOfSets } from "./cloneMapOfSets.ts"
 
-export class School {
-    private readonly students: Set<StudentId>
-    private readonly teachers: Set<TeacherId>
-    private readonly teacherToStudent: Map<TeacherId, Set<StudentId>>
-    private readonly studentToTeacher: Map<StudentId, Set<TeacherId>>
-
-    private constructor(
-        students: Set<StudentId>,
-        teachers: Set<TeacherId>,
-        teacherToStudent: Map<TeacherId, Set<StudentId>>,
-        studentToTeacher: Map<StudentId, Set<TeacherId>>,
-    ) {
-        this.students = students
-        this.teachers = teachers
-        this.teacherToStudent = teacherToStudent
-        this.studentToTeacher = studentToTeacher
-    }
-
-    static create(pairs: Pairing[]): School {
-        const school = new School(new Set(), new Set(), new Map(), new Map())
-        for (const [teacher, student] of pairs) school.addEdge(student, teacher)
-        return school
-    }
-
-    clone() {
-        return new School(
-            new Set(this.students),
-            new Set(this.teachers),
-            cloneMapOfSets(this.teacherToStudent),
-            cloneMapOfSets(this.studentToTeacher),
-        )
-    }
-
-    hasStudents() {
-        return this.students.size > 0
-    }
-
-    removeStudent(studentId: StudentId) {
-        this.students.delete(studentId)
-
-        const teacherIds = this.studentToTeacher.get(studentId) ?? []
-        this.studentToTeacher.delete(studentId)
-
-        for (const teacherId of teacherIds) {
-            this.teacherToStudent.get(teacherId)?.delete(studentId)
-        }
-    }
-
-    addEdge(student: StudentId, teacher: TeacherId) {
-        this.students.add(student)
-        this.teachers.add(teacher)
-
-        if (!this.teacherToStudent.has(teacher))
-            this.teacherToStudent.set(teacher, new Set())
-
-        if (!this.studentToTeacher.has(student))
-            this.studentToTeacher.set(student, new Set())
-
-        this.teacherToStudent.get(teacher)!.add(student)
-        this.studentToTeacher.get(student)!.add(teacher)
-    }
-
-    getTeacher(id: TeacherId): ITeacher {
-        return new Teacher(id, this)
-    }
-
-    getStudent(id: StudentId): IStudent {
-        return new Student(id, this)
-    }
-
-    getTeacherIds({
-        studentId,
-    }: { studentId?: StudentId } = {}): ReadonlySet<TeacherId> {
-        return new Set(
-            studentId
-                ? (this.studentToTeacher.get(studentId) ?? [])
-                : this.teachers,
-        )
-    }
-
-    getStudentIds({
-        teacherId,
-    }: { teacherId?: TeacherId } = {}): ReadonlySet<StudentId> {
-        return new Set(
-            teacherId
-                ? (this.teacherToStudent.get(teacherId) ?? [])
-                : this.students,
-        )
-    }
-
-    getTeachers(): ITeacher[] {
-        return Array.from(this.getTeacherIds()).map(id => this.getTeacher(id))
-    }
-}
 export interface ITeacher {
     readonly id: TeacherId
 
@@ -117,6 +23,144 @@ export interface ITeacher {
      * get the students that are shared by each teacher
      */
     sharedStudents(...teacherIds: TeacherId[]): IStudent[]
+}
+
+export interface IStudent {
+    readonly id: StudentId
+    readonly teachers: ITeacher[]
+    hasTeachers(...teacherId: TeacherId[]): boolean
+    sharedTeachers(...studentIds: StudentId[]): ITeacher[]
+}
+
+export class School {
+    private constructor(
+        private readonly teacherToStudent: ReadonlyMap<
+            TeacherId,
+            Set<StudentId>
+        >,
+        private readonly studentToTeacher: ReadonlyMap<
+            StudentId,
+            Set<TeacherId>
+        >,
+    ) {}
+
+    static create(pairs: Pairing[]): School {
+        const teacherToStudent = new Map<TeacherId, Set<StudentId>>()
+        const studentToTeacher = new Map<StudentId, Set<TeacherId>>()
+
+        const school = new School(teacherToStudent, studentToTeacher)
+        for (const [teacher, student] of pairs) {
+            if (!teacherToStudent.has(teacher))
+                teacherToStudent.set(teacher, new Set())
+
+            if (!studentToTeacher.has(student))
+                studentToTeacher.set(student, new Set())
+
+            teacherToStudent.get(teacher)!.add(student)
+            studentToTeacher.get(student)!.add(teacher)
+        }
+        return school
+    }
+
+    static serialize(schools: School[]): string {
+        return JSON.stringify(
+            schools.map(s => {
+                const teacherToStudent = [...s.teacherToStudent.entries()].map(
+                    ([k, v]) => [k, [...v]] as const,
+                )
+                const studentToTeacher = [...s.studentToTeacher.entries()].map(
+                    ([k, v]) => [k, [...v]] as const,
+                )
+
+                return {
+                    teacherToStudent,
+                    studentToTeacher,
+                }
+            }),
+        )
+    }
+
+    static deserialize(str: string): School[] {
+        const values = JSON.parse(str) as {
+            teacherToStudent: [TeacherId, StudentId[]][]
+            studentToTeacher: [StudentId, TeacherId[]][]
+        }[]
+
+        return values.map(
+            ({ teacherToStudent, studentToTeacher }) =>
+                new School(
+                    new Map(teacherToStudent.map(([k, v]) => [k, new Set(v)])),
+                    new Map(studentToTeacher.map(([k, v]) => [k, new Set(v)])),
+                ),
+        )
+    }
+
+    without({
+        teachers,
+        students,
+    }: {
+        teachers?: TeacherId[]
+        students?: StudentId[]
+    }): School {
+        const teacherToStudent = cloneMapOfSets(this.teacherToStudent)
+        const studentToTeacher = cloneMapOfSets(this.studentToTeacher)
+
+        for (const teacher of teachers ?? []) {
+            teacherToStudent.delete(teacher)
+            for (const teacherList of studentToTeacher.values()) {
+                teacherList.delete(teacher)
+            }
+        }
+
+        for (const student of students ?? []) {
+            studentToTeacher.delete(student)
+            for (const studentList of teacherToStudent.values()) {
+                studentList.delete(student)
+            }
+        }
+
+        return new School(teacherToStudent, studentToTeacher)
+    }
+
+    getTeacher(id: TeacherId): ITeacher {
+        return new Teacher(id, this)
+    }
+
+    getStudent(id: StudentId): IStudent {
+        return new Student(id, this)
+    }
+
+    getTeacherIds({
+        studentId,
+    }: { studentId?: StudentId } = {}): ReadonlySet<TeacherId> {
+        return new Set(
+            studentId
+                ? (this.studentToTeacher.get(studentId) ?? [])
+                : new Set([...this.teacherToStudent.keys()]),
+        )
+    }
+
+    getStudentIds({
+        teacherId,
+    }: { teacherId?: TeacherId } = {}): ReadonlySet<StudentId> {
+        return new Set(
+            teacherId
+                ? (this.teacherToStudent.get(teacherId) ?? [])
+                : new Set([...this.studentToTeacher.keys()]),
+        )
+    }
+
+    getTeachers(): ITeacher[] {
+        return Array.from(this.getTeacherIds()).map(id => this.getTeacher(id))
+    }
+
+    isStudent(s: string): s is StudentId {
+        return this.studentToTeacher.has(s as StudentId)
+    }
+
+    isTeacher(t: string): s is TeacherId {
+        return this.teacherToStudent.has(t as TeacherId)
+    }
 }
 
 class Teacher implements ITeacher {
@@ -139,7 +183,7 @@ class Teacher implements ITeacher {
 
     get neighbours(): ITeacher[] {
         return uniqueBy(
-            this.students.flatMap(s => s.teachers),
+            this.students.flatMap(s => s.teachers).filter(t => t.id != this.id),
             t => t.id,
         )
     }
@@ -157,13 +201,6 @@ class Teacher implements ITeacher {
             ),
         )
     }
-}
-
-export interface IStudent {
-    readonly id: StudentId
-    readonly teachers: ITeacher[]
-    hasTeachers(...teacherId: TeacherId[]): boolean
-    sharedTeachers(...studentIds: StudentId[]): ITeacher[]
 }
 
 class Student implements IStudent {
@@ -198,14 +235,4 @@ class Student implements IStudent {
             ),
         )
     }
-}
-
-function cloneMapOfSets<TMap, TSet>(
-    map: ReadonlyMap<TMap, ReadonlySet<TSet>>,
-): Map<TMap, Set<TSet>> {
-    const result: Map<TMap, Set<TSet>> = new Map()
-    for (const [key, value] of map.entries()) {
-        result.set(key, new Set(value))
-    }
-    return result
 }

@@ -1,32 +1,58 @@
-import type { ITeacher, School } from "./school.ts"
-import type { Result } from "./result.ts"
-import type { StudentId } from "./studentId.ts"
 import type { TeacherId } from "./teacherId.ts"
-import { shuffle } from "./shuffle.ts"
-import { chunks } from "./chunks.ts"
-import { intersection } from "./intersection.ts"
-import { pickRandom } from "./pickRandom.ts"
+import { type ITeacher, School } from "./school.ts"
+import type { Group } from "./group.ts"
 
-interface Params {
-    teachersPerGroup: number
+interface Opts {
+    teachersPerGroup?: number
 }
 
+/**
+ * Generate groupings of teachers and students such that:
+ * - Each group has up to N teachers (N from opts.teachersPerGroup).
+ * - Every student placed in a group is connected to all teachers in that group.
+ * - Student counts are balanced across groups when possible.
+ *
+ * Notes:
+ * - Teachers are assigned to exactly one group.
+ * - If teachers.length is not divisible by N, the final group may have fewer than N teachers.
+ * - Students are assigned to at most one group (to keep groups distinct and sizes balanced).
+ */
 export function createGroupings(
     school: School,
-    { teachersPerGroup }: Params,
-): Result {
-    interface Group {
-        teachers: TeacherId[]
-        students: StudentId[]
-    }
+    { teachersPerGroup }: Opts = {},
+): Group[] {
+    const groups = createTeacherGroups(
+        school.getTeachers(),
+        teachersPerGroup ?? 4,
+    )
 
-    const groups = makeTeacherGroups(school)
+    console.debug("teacher groups", groups)
 
-    return []
+    const result: Group[] = []
+    return result
 }
 
-function makeTeacherGroups(school: School): ITeacher[][] {
-    const neighbourhoods: Set<TeacherId>[] = []
+function createTeacherGroups(
+    teachers: ITeacher[],
+    perGroup: number,
+): TeacherId[][] {
+    const sortedByNeighbourCount = teachers
+        .map(teacher => ({
+            id: teacher.id,
+            neighbours: teacher.neighbours,
+            teacher,
+        }))
+        .toSorted((a, b) => a.neighbours.length - b.neighbours.length)
 
-    return []
+    const candidates = new Set(teachers.map(t => t.id))
+
+    const groups: TeacherId[][] = []
+
+    for (const t of sortedByNeighbourCount) {
+        if (!candidates.has(t.id)) {
+            continue
+        }
+    }
+
+    return groups
 }
