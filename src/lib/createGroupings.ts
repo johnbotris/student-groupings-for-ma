@@ -1,11 +1,9 @@
-import { type ITeacher, School } from "./school.ts"
+import { type IStudent, type ITeacher, School } from "./school.ts"
 import type { Group } from "./group.ts"
 import { pickRandom } from "./pickRandom.ts"
-import { findMin } from "./findMin.ts"
-import { intersection } from "./intersection.ts"
 import { shuffle } from "./shuffle.ts"
-import { findMax } from "./findMax.ts"
-import { intersectionBy } from "./intersectionBy.ts"
+import { removeFrom } from "./removeFrom.ts"
+import { count } from "./count.ts"
 
 interface Opts {
     teachersPerGroup: number
@@ -22,55 +20,86 @@ interface Opts {
  * - If teachers.length is not divisible by N, the final group may have fewer than N teachers.
  * - Students are assigned to at most one group (to keep groups distinct and sizes balanced).
  */
-export function createGroupings(
+export default function createGroupings(
     school: School,
     { teachersPerGroup }: Opts,
 ): Group[] {
-    // pick a random teacher
-    // find a teacher with the least amount of overlap
-    // find another teacher with the least amount of overlap
-    // etc
-    // until the group size has been reached
-
     const teacherGroups: ITeacher[][] = []
 
     const numGroups = Math.floor(school.numTeachers / teachersPerGroup)
 
-    const teachers = school.teachers
+    const candidates = shuffle(school.teachers)
     for (let i = 0; i < numGroups; ++i) {
-        if (teacherGroups.length === 0) {
-            teacherGroups.push([pickRandom(school.teachers)!])
-        } else {
-            const bestChoice = findMin(shuffle(teachers), t => {
-                const students = [...teacherGroups.flat(), t].map(t =>
-                    t.students.map(s => s.id),
-                )
-
-                return intersection(students).length
-            })
-
-            if (!bestChoice) throw new Error("something borked")
-
-            teacherGroups.push([bestChoice])
-        }
+        teacherGroups.push([candidates.pop()!])
     }
 
-    while (teachers.length > 0) {
-        const teacher = teachers.pop()!
+    let groupIdx = 0
+    while (candidates.length > 0) {
+        const group = teacherGroups[groupIdx % teacherGroups.length]
+        const groupLeader = group[0]
+        const allowedCandidates = groupLeader.neighbours.filter(t =>
+            candidates.includes(t),
+        )
 
-        const bestChoice = findMax(teacherGroups, group => {
-            const multiplier =
-                group.length < teachersPerGroup ? 1 : Number.MIN_VALUE // 1 / Math.sqrt(group.length * 4)
+        const newMember =
+            pickRandom(allowedCandidates) ?? pickRandom(candidates)
 
-            const students = [...group.map(t => t.students), teacher.students]
+        if (!newMember) throw new Error("we fukd up")
 
-            return intersectionBy(students, s => s.id).length * multiplier
+        group.push(newMember)
+        removeFrom(candidates, newMember)
+        groupIdx++
+    }
+
+    const candidateStudents = school.students
+    const studentGroups: IStudent[][] = []
+
+    groupIdx = 0
+    let missedAt = -1
+    while (candidateStudents.length > 0) {
+        if (studentGroups.length <= groupIdx) {
+            studentGroups.push([])
+        }
+
+        const studentGroup = studentGroups[groupIdx % numGroups]
+
+        const teacherGroup = teacherGroups[groupIdx % numGroups]
+
+        const getNumInGroup = (s: IStudent) =>
+            count(teacherGroup, t => t.hasStudents(s.id))
+
+        const allowedStudents = candidateStudents.filter(s => {
+            // the student has at least 2 teachers in the group
+            return count(teacherGroup, t => t.hasStudents(s.id)) > 1
         })
 
-        if (!bestChoice) throw new Error("something borked")
+        const student = allowedStudents
+            .toSorted((a, b) => getNumInGroup(b) - getNumInGroup(a))
+            .at(0)
 
-        bestChoice.push(teacher)
+        if (!student) {
+            if (missedAt === groupIdx) {
+                console.error("We failed :(")
+                break
+            } else if (missedAt === -1) {
+                missedAt = groupIdx
+            }
+
+            continue
+        }
+
+        missedAt = -1
+
+        studentGroup.push(student)
+        removeFrom(candidateStudents, student)
+
+        groupIdx++
     }
 
-    return teacherGroups.map(g => g.map(t => t.id))
+    if (missedAt === -1) console.log("wow success")
+
+    return teacherGroups.map((g, idx) => [
+        ...g.map(t => t.id),
+        ...(studentGroups[idx]?.map(s => s.id) ?? []),
+    ])
 }

@@ -47,7 +47,7 @@ export function parseStudentWorkbook(data: ArrayBuffer): WorkbookData {
 
     const studentName = (student: StudentRow) =>
         studentId(
-            `${student["Student First Name"]} ${student["Student Last Name"]}`,
+            `${student["Student ID"]} Y${student["Student Year Level"]} ${student["Student First Name"]} ${student["Student Last Name"]}`,
         )
 
     return {

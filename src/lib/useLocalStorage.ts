@@ -10,24 +10,15 @@ interface UseLocalStorageOpts<T> {
 
 export function useLocalStorage<T>(
     key: string,
-    opts: { defaultValue: T } & UseLocalStorageOpts<T>,
-): [T, (newState: T) => void]
-
-export function useLocalStorage<T>(
-    key: string,
-    opts?: UseLocalStorageOpts<T>,
-): [T | null, (newState: T) => void]
-
-export function useLocalStorage<T>(
-    key: string,
-    { defaultValue, serialization }: UseLocalStorageOpts<T> = {},
+    defaultValue: T,
+    { serialization }: UseLocalStorageOpts<T> = {},
 ) {
-    const [state, _setState] = useState<T | null>(defaultValue ?? null)
+    const [state, setState] = useState(defaultValue)
 
     useEffect(() => {
         const stored = localStorage.getItem(key)
         if (stored) {
-            _setState(
+            setState(
                 serialization
                     ? (serialization.deserialize(stored) as T)
                     : (JSON.parse(stored) as T),
@@ -35,20 +26,18 @@ export function useLocalStorage<T>(
         }
     }, [key])
 
-    function setState(newState: T) {
-        if (newState != null) {
+    useEffect(() => {
+        if (state != null) {
             localStorage.setItem(
                 key,
                 serialization
-                    ? serialization.serialize(newState)
-                    : JSON.stringify(newState),
+                    ? serialization.serialize(state)
+                    : JSON.stringify(state),
             )
         } else {
             localStorage.removeItem(key)
         }
+    }, [state])
 
-        _setState(newState)
-    }
-
-    return [state, setState] as [typeof state, typeof _setState]
+    return [state, setState] as const
 }

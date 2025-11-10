@@ -33,9 +33,6 @@ export interface IStudent {
 }
 
 export class School {
-    public readonly numTeachers: number
-    public readonly numStudents: number
-
     private constructor(
         private readonly teacherToStudent: ReadonlyMap<
             TeacherId,
@@ -45,10 +42,7 @@ export class School {
             StudentId,
             Set<TeacherId>
         >,
-    ) {
-        this.numTeachers = this.teacherToStudent.size
-        this.numStudents = this.studentToTeacher.size
-    }
+    ) {}
 
     static create(pairs: Pairing[]): School {
         const teacherToStudent = new Map<TeacherId, Set<StudentId>>()
@@ -68,36 +62,31 @@ export class School {
         return school
     }
 
-    static serialize(schools: School[]): string {
-        return JSON.stringify(
-            schools.map(s => {
-                const teacherToStudent = [...s.teacherToStudent.entries()].map(
-                    ([k, v]) => [k, [...v]] as const,
-                )
-                const studentToTeacher = [...s.studentToTeacher.entries()].map(
-                    ([k, v]) => [k, [...v]] as const,
-                )
+    static serialize(school: School | null): string {
+        if (!school) return "null"
 
-                return {
-                    teacherToStudent,
-                    studentToTeacher,
-                }
-            }),
+        const teacherToStudent = [...school.teacherToStudent.entries()].map(
+            ([k, v]) => [k, [...v]] as const,
         )
+        const studentToTeacher = [...school.studentToTeacher.entries()].map(
+            ([k, v]) => [k, [...v]] as const,
+        )
+
+        return JSON.stringify({
+            teacherToStudent,
+            studentToTeacher,
+        })
     }
 
-    static deserialize(str: string): School[] {
-        const values = JSON.parse(str) as {
+    static deserialize(str: string): School {
+        const { teacherToStudent, studentToTeacher } = JSON.parse(str) as {
             teacherToStudent: [TeacherId, StudentId[]][]
             studentToTeacher: [StudentId, TeacherId[]][]
-        }[]
+        }
 
-        return values.map(
-            ({ teacherToStudent, studentToTeacher }) =>
-                new School(
-                    new Map(teacherToStudent.map(([k, v]) => [k, new Set(v)])),
-                    new Map(studentToTeacher.map(([k, v]) => [k, new Set(v)])),
-                ),
+        return new School(
+            new Map(teacherToStudent.map(([k, v]) => [k, new Set(v)])),
+            new Map(studentToTeacher.map(([k, v]) => [k, new Set(v)])),
         )
     }
 
@@ -107,6 +96,13 @@ export class School {
 
     get students() {
         return [...this.studentToTeacher.keys()].map(s => this.getStudent(s))
+    }
+
+    public get numTeachers() {
+        return this.teacherToStudent.size
+    }
+    public get numStudents() {
+        return this.studentToTeacher.size
     }
 
     without({
