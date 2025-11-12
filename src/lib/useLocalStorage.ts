@@ -13,18 +13,14 @@ export function useLocalStorage<T>(
     defaultValue: T,
     { serialization }: UseLocalStorageOpts<T> = {},
 ) {
-    const [state, setState] = useState(defaultValue)
-
-    useEffect(() => {
-        const stored = localStorage.getItem(key)
-        if (stored) {
-            setState(
-                serialization
-                    ? (serialization.deserialize(stored) as T)
-                    : (JSON.parse(stored) as T),
-            )
-        }
-    }, [key])
+    const stored = localStorage.getItem(key)
+    const [state, setState] = useState(
+        stored
+            ? serialization
+                ? (serialization.deserialize(stored) as T)
+                : (JSON.parse(stored) as T)
+            : defaultValue,
+    )
 
     useEffect(() => {
         if (state != null) {
@@ -37,7 +33,7 @@ export function useLocalStorage<T>(
         } else {
             localStorage.removeItem(key)
         }
-    }, [state])
+    }, [key, serialization, state])
 
     return [state, setState] as const
 }

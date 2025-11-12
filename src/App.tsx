@@ -1,4 +1,4 @@
-import { type PropsWithChildren, useCallback, useRef, useState } from "react"
+import { type PropsWithChildren, useCallback, useState } from "react"
 import { parseStudentWorkbook } from "./lib/parseStudentsWorkbook.ts"
 import { useLocalStorage } from "./lib/useLocalStorage.ts"
 import { School } from "./lib/school.ts"
@@ -35,10 +35,6 @@ export default function App() {
     )
 
     const algorithms = {
-        // v2,
-        // v3,
-        // v1,
-        // v4,
         current: v5,
     }
 
@@ -136,43 +132,6 @@ export default function App() {
         setGroupHistoryCursor(c => Math.min(c + 1, groupHistory.length))
     }
 
-    const automatic = useRef(false)
-
-    function auto() {
-        if (automatic.current) {
-            automatic.current = false
-            return
-        }
-
-        automatic.current = true
-        setTimeout(function doAutomatic() {
-            if (!school) automatic.current = false
-
-            if (!automatic.current) return
-
-            try {
-                const grouping = createGroupings(school!, {
-                    teachersPerGroup,
-                })
-                setGroupHistory(hist =>
-                    [...hist, grouping].slice(hist.length - KEEP_HISTORY),
-                )
-
-                if (
-                    grouping.flat().length ===
-                    school!.numTeachers + school!.numStudents
-                ) {
-                    console.log("wow!!!")
-                    automatic.current = false
-                    return
-                }
-            } catch (e: unknown) {
-                console.error(e)
-            }
-            setTimeout(doAutomatic)
-        })
-    }
-
     return (
         <div className="flex flex-col gap-2">
             <div className={"flex flex-row gap-4"}>
@@ -186,20 +145,6 @@ export default function App() {
 
                 {school && (
                     <>
-                        <input
-                            type="number"
-                            className="bg-gray-800 text-gray-200 text-sm
-             px-3 py-1.5 rounded-md border border-gray-700
-             focus:outline-none focus:ring-2 focus:ring-gray-600
-             w-20"
-                            value={teachersPerGroup}
-                            onChange={e =>
-                                setTeachersPerGroup(Number(e.target.value))
-                            }
-                        />
-
-                        <NiceButton onClick={createGroups}>generate</NiceButton>
-
                         <select
                             onChange={e =>
                                 setSelectedAlgorithm(
@@ -214,7 +159,19 @@ export default function App() {
                             ))}
                         </select>
 
-                        <NiceButton onClick={auto}>auto</NiceButton>
+                        <input
+                            type="number"
+                            className="bg-gray-800 text-gray-200 text-sm
+             px-3 py-1.5 rounded-md border border-gray-700
+             focus:outline-none focus:ring-2 focus:ring-gray-600
+             w-20"
+                            value={teachersPerGroup}
+                            onChange={e =>
+                                setTeachersPerGroup(Number(e.target.value))
+                            }
+                        />
+
+                        <NiceButton onClick={createGroups}>generate</NiceButton>
 
                         <NiceButton onClick={go}>save result</NiceButton>
 
