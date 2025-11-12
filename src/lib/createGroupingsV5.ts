@@ -1,6 +1,7 @@
 import type { StudentId } from "./studentId.ts"
 import type { TeacherId } from "./teacherId.ts"
 import { School } from "./school.ts"
+import { intersection } from "./intersection.ts"
 
 export type Group = (TeacherId | StudentId)[]
 
@@ -35,7 +36,7 @@ export default function createGroupings(
     if (numTeachers === 0 || numStudents === 0) return []
 
     const teacherById = new Map<TeacherId, (typeof allTeacherObjs)[number]>()
-    for (const t of allTeacherObjs) teacherById.set(t.id, t)
+    for (const t of allTeacherObjs) teacherById.set(t, t)
 
     const students = shuffle(allStudentObjs.slice())
     const teachers = shuffle(allTeacherObjs.slice())
@@ -58,7 +59,7 @@ export default function createGroupings(
     // 1. Partition teachers into groups (no students yet)
     // -----------------------------
 
-    const unassignedTeachers = new Set<TeacherId>(teachers.map(t => t.id))
+    const unassignedTeachers = new Set<TeacherId>(teachers)
 
     const teacherGroups: TeacherId[][] = []
 
@@ -67,8 +68,8 @@ export default function createGroupings(
         const t = teacherById.get(id)
         if (!t) return 0
         let d = 0
-        for (const n of t.neighbours) {
-            if (unassignedTeachers.has(n.id)) d++
+        for (const n of school.getNeighbours(t)) {
+            if (unassignedTeachers.has(n)) d++
         }
         return d
     }
@@ -82,7 +83,10 @@ export default function createGroupings(
         if (!cand) return 0
         let score = 0
         for (const gId of groupTeacherIds) {
-            const shared = cand.sharedStudents(gId as TeacherId)
+            const shared = intersection([
+                school.getStudents(cand),
+                school.getStudents(gId),
+            ])
             score += shared.length
         }
         return score
@@ -125,9 +129,9 @@ export default function createGroupings(
             for (const gId of group) {
                 const t = teacherById.get(gId)
                 if (!t) continue
-                for (const n of t.neighbours) {
-                    if (unassignedTeachers.has(n.id)) {
-                        neighbourSet.add(n.id)
+                for (const n of school.getNeighbours(t)) {
+                    if (unassignedTeachers.has(n)) {
+                        neighbourSet.add(n)
                     }
                 }
             }
@@ -226,8 +230,8 @@ export default function createGroupings(
 
     // Assign each student to the group that has most of their teachers
     for (const s of students) {
-        const sId = s.id
-        const tIds = s.teachers.map(t => t.id)
+        const sId = s
+        const tIds = school.getTeachers(s)
 
         let bestOverlap = -1
         const candidates: number[] = []
@@ -261,11 +265,11 @@ export default function createGroupings(
         const g = groups[currentGroupIdx]
 
         // Already ok?
-        for (const s of teacher.students) {
-            if (g.students.has(s.id)) return
+        for (const s of school.getStudents(teacher)) {
+            if (g.students.has(s)) return
         }
 
-        const teacherStudentIds = teacher.students.map(s => s.id)
+        const teacherStudentIds = school.getStudents(teacher)
 
         // Option 1: move a student to teacher's group (only from groups that would
         // still have >=1 student after the move).
@@ -338,8 +342,8 @@ export default function createGroupings(
     // -----------------------------
 
     for (const s of students) {
-        const sId = s.id
-        const tIds = s.teachers.map(t => t.id)
+        const sId = s
+        const tIds = school.getTeachers(s)
 
         const currentGroupIdx = studentToGroup.get(sId)!
         let currentOverlap = overlapForStudentInGroup(tIds, currentGroupIdx)
@@ -371,8 +375,8 @@ export default function createGroupings(
                 if (otherTId === tId) continue
                 const otherTeacher = teacherById.get(otherTId)
                 if (!otherTeacher) continue
-                for (const st of otherTeacher.students) {
-                    if (fromGroup.students.has(st.id)) {
+                for (const st of school.getStudents(otherTeacher)) {
+                    if (fromGroup.students.has(st)) {
                         ok = true
                         break
                     }
@@ -424,9 +428,9 @@ export default function createGroupings(
             const teacher = teacherById.get(tId)
             if (!teacher) continue
             let hasOtherStudent = false
-            for (const st of teacher.students) {
-                if (st.id === sId) continue
-                if (currentGroup.students.has(st.id)) {
+            for (const st of school.getStudents(teacher)) {
+                if (st === sId) continue
+                if (currentGroup.students.has(st)) {
                     hasOtherStudent = true
                     break
                 }

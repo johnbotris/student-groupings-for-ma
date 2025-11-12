@@ -1,24 +1,13 @@
-import {
-    type PropsWithChildren,
-    useCallback,
-    useEffect,
-    useRef,
-    useState,
-} from "react"
+import { type PropsWithChildren, useCallback, useRef, useState } from "react"
 import { parseStudentWorkbook } from "./lib/parseStudentsWorkbook.ts"
 import { useLocalStorage } from "./lib/useLocalStorage.ts"
-import { type ITeacher, School } from "./lib/school.ts"
+import { School } from "./lib/school.ts"
 import type { Group } from "./lib/group.ts"
 import { generateOutputWorkbook } from "./lib/generateOutputWorkbook.ts"
 import type { TeacherId } from "./lib/teacherId.ts"
 import type { StudentId } from "./lib/studentId.ts"
-import v1 from "./lib/createGroupings.ts"
-import v2 from "./lib/createGroupingsV2.ts"
-import v3 from "./lib/createGroupingsV3.ts"
-import v4 from "./lib/createGroupingsV4.ts"
 import v5 from "./lib/createGroupingsV5.ts"
 import { parseExistingResults } from "./lib/parseExistingResults.ts"
-import { count } from "./lib/count.ts"
 
 const KEEP_HISTORY = 15
 
@@ -114,14 +103,12 @@ export default function App() {
         })
     }
 
-    const sortedTeachers =
-        school
-            ?.getTeachers()
-            .toSorted((a, b) => b.students.length - a.students.length) ?? []
-
-    const candidateStudents = school?.getStudentIds()
-
-    const sortedCandidates = [...(candidateStudents ?? [])]
+    const sortedTeachers = school
+        ? school.teachers.toSorted(
+              (a, b) =>
+                  school.getStudents(a).length - school.getStudents(b).length,
+          )
+        : []
 
     function go() {
         if (!groupings?.length) {
@@ -272,11 +259,13 @@ export default function App() {
                         <div className={"flex flex-col w-fit gap-2"}>
                             <StudentsList
                                 school={school}
-                                items={sortedCandidates.map(studentId => {
-                                    return {
-                                        studentId,
-                                    }
-                                })}
+                                items={(school?.students ?? []).map(
+                                    studentId => {
+                                        return {
+                                            studentId,
+                                        }
+                                    },
+                                )}
                             />
                         </div>
                     </div>
@@ -291,7 +280,7 @@ export default function App() {
 }
 
 interface TeacherListItem {
-    teacher: ITeacher
+    teacher: TeacherId
     onClick?: () => void
 }
 
@@ -305,10 +294,10 @@ function TeacherList({ items }: TeacherListProps) {
             {items.map(item => {
                 return (
                     <li
-                        key={item.teacher.id}
+                        key={item.teacher}
                         className={` gap-8 px-2 cursor-pointer odd:bg-emerald-100`}
                     >
-                        {item.teacher.id}
+                        {item.teacher}
                     </li>
                 )
             })}
@@ -365,9 +354,6 @@ function Results({ groupings, school }: ResultsProps) {
     return (
         <ul className={"text-sm  flex flex-col flex-wrap max-h-sm gap-2"}>
             {groupings.map((g, idx) => {
-                const numStudents = school ? count(g, school.isStudent) : 0
-                const numTeachers = school ? count(g, school.isTeacher) : 0
-                const total = g.length
                 return (
                     <div
                         key={g.join(",")}
@@ -387,26 +373,28 @@ function Results({ groupings, school }: ResultsProps) {
                                     let classes = ""
 
                                     if (school?.isStudent(member)) {
-                                        const student =
-                                            school.getStudent(member)
                                         if (selectedStudent === member) {
                                             classes = "bg-red-200"
                                         } else if (
                                             selectedTeacher &&
-                                            student.hasTeachers(selectedTeacher)
+                                            school.studentHasTeacher(
+                                                member,
+                                                selectedTeacher,
+                                            )
                                         ) {
                                             classes += "bg-yellow-200"
                                         } else {
                                             classes += "bg-red-100"
                                         }
                                     } else if (school?.isTeacher(member)) {
-                                        const teacher =
-                                            school.getTeacher(member)
                                         if (selectedTeacher === member) {
                                             classes = "bg-emerald-200"
                                         } else if (
                                             selectedStudent &&
-                                            teacher.hasStudents(selectedStudent)
+                                            school?.studentHasTeacher(
+                                                selectedStudent,
+                                                member,
+                                            )
                                         ) {
                                             classes += "bg-amber-200"
                                         } else {
