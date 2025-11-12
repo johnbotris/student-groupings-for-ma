@@ -98,6 +98,8 @@ export default function App() {
         from: number,
         to: number,
     ) {
+        if (from === to) return
+
         setGroupings(groups =>
             groups.map((group, groupIdx) => {
                 if (groupIdx === from) {
