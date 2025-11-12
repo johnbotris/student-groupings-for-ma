@@ -9,8 +9,6 @@ import type { StudentId } from "./lib/studentId.ts"
 import v5 from "./lib/createGroupingsV5.ts"
 import { parseExistingResults } from "./lib/parseExistingResults.ts"
 
-const KEEP_HISTORY = 15
-
 export default function App() {
     const [school, setSchool] = useLocalStorage<School | null>("school", null, {
         serialization: {
@@ -19,14 +17,9 @@ export default function App() {
         },
     })
 
-    const [groupHistory, setGroupHistory] = useLocalStorage<Group[][]>(
-        "groupHistory",
+    const [groupings, setGroupings] = useLocalStorage<Group[]>(
+        "groupings-results",
         [],
-    )
-
-    const [groupHistoryCursor, setGroupHistoryCursor] = useLocalStorage<number>(
-        "group-history-cursor",
-        -1,
     )
 
     const [teachersPerGroup, setTeachersPerGroup] = useLocalStorage(
@@ -44,33 +37,13 @@ export default function App() {
 
     const createGroupings = algorithms[selectedAlgorithm]
 
-    const groupings = groupHistory.at(groupHistoryCursor)
-
     const resultSize = groupings?.flat().length ?? 0
 
     const createGroups = useCallback(() => {
         if (!school) return
         console.log("grouping with ", teachersPerGroup)
-        setGroupHistory(history => {
-            try {
-                return [
-                    ...history,
-                    createGroupings(school, { teachersPerGroup }),
-                ].slice(history.length - KEEP_HISTORY)
-            } catch (e) {
-                console.error(e)
-                return history
-            }
-        })
-
-        setGroupHistoryCursor(-1)
-    }, [
-        createGroupings,
-        school,
-        setGroupHistory,
-        setGroupHistoryCursor,
-        teachersPerGroup,
-    ])
+        setGroupings(createGroupings(school, { teachersPerGroup }))
+    }, [createGroupings, school, setGroupings, teachersPerGroup])
 
     async function openClassList() {
         const file = await openFile()
@@ -80,9 +53,7 @@ export default function App() {
 
     async function openExistingResults() {
         const file = await openFile()
-        const groups = parseExistingResults(file) as Group[]
-        setGroupHistoryCursor(-1)
-        setGroupHistory([groups])
+        setGroupings(parseExistingResults(file) as Group[])
     }
 
     function openFile(): Promise<ArrayBuffer> {
@@ -122,14 +93,22 @@ export default function App() {
         URL.revokeObjectURL(url)
     }
 
-    function lookBack() {
-        setGroupHistoryCursor(c =>
-            c === -1 ? groupHistory.length - 2 : Math.max(c - 1, 0),
+    function moveGroupMember(
+        member: StudentId | TeacherId,
+        from: number,
+        to: number,
+    ) {
+        setGroupings(groups =>
+            groups.map((group, groupIdx) => {
+                if (groupIdx === from) {
+                    return group.filter(m => m !== member)
+                } else if (groupIdx === to) {
+                    return [...group, member]
+                } else {
+                    return group
+                }
+            }),
         )
-    }
-
-    function lookForward() {
-        setGroupHistoryCursor(c => Math.min(c + 1, groupHistory.length))
     }
 
     return (
@@ -174,27 +153,6 @@ export default function App() {
                         <NiceButton onClick={createGroups}>generate</NiceButton>
 
                         <NiceButton onClick={go}>save result</NiceButton>
-
-                        <NiceButton
-                            disabled={
-                                groupHistory.length === 1 ||
-                                groupHistoryCursor === 0
-                            }
-                            onClick={lookBack}
-                        >
-                            previous result
-                        </NiceButton>
-
-                        <NiceButton
-                            disabled={
-                                groupHistory.length === 1 ||
-                                groupHistoryCursor === -1 ||
-                                groupHistoryCursor === groupHistory.length - 1
-                            }
-                            onClick={lookForward}
-                        >
-                            next result
-                        </NiceButton>
                     </>
                 )}
 
@@ -229,7 +187,11 @@ export default function App() {
                 )}
 
                 {groupings && (
-                    <Results groupings={groupings} school={school ?? null} />
+                    <Results
+                        groupings={groupings}
+                        school={school ?? null}
+                        moveMember={moveGroupMember}
+                    />
                 )}
             </div>
         </div>
@@ -291,11 +253,22 @@ function StudentsList({ items }: StudentsListProps) {
 interface ResultsProps {
     groupings: Group[]
     school: School | null
+    moveMember: (
+        s: TeacherId | StudentId,
+        fromGroupIdx: number,
+        toGroupIdx: number,
+    ) => void
 }
 
-function Results({ groupings, school }: ResultsProps) {
+function Results({ groupings, school, moveMember }: ResultsProps) {
     const [selectedTeacher, setSelectedTeacher] = useState<TeacherId>()
     const [selectedStudent, setSelectedStudent] = useState<StudentId>()
+
+    const sortedGroupings = groupings.map(grouping =>
+        grouping
+            .toSorted()
+            .toSorted(member => (school?.isTeacher(member) ? -1 : 1)),
+    )
 
     function select(id: StudentId | TeacherId) {
         if (school?.isStudent(id)) {
@@ -308,25 +281,36 @@ function Results({ groupings, school }: ResultsProps) {
             else setSelectedTeacher(id)
         }
     }
+
     return (
         <ul className={"text-sm  flex flex-col flex-wrap max-h-sm gap-2"}>
-            {groupings.map((g, idx) => {
+            {sortedGroupings.map((group, groupIdx) => {
                 return (
                     <div
-                        key={g.join(",")}
+                        onDragOver={ev => ev.preventDefault()}
+                        onDrop={ev => {
+                            moveMember(
+                                ev.dataTransfer.getData("member") as
+                                    | StudentId
+                                    | TeacherId,
+                                Number(ev.dataTransfer.getData("from")),
+                                groupIdx,
+                            )
+                        }}
+                        key={group.join(",")}
                         className={
                             "flex flex-row items-center bg-violet-50 border-1 px-2"
                         }
                     >
                         <span className={"flex gap-0.5 items-baseline"}>
-                            <span className={"font-bold"}>{idx + 1}</span>
+                            <span className={"font-bold"}>{groupIdx + 1}</span>
                             <span className={"text-xs text-grey-50"}>
-                                ({g.length})
+                                ({group.length})
                             </span>
                         </span>
                         <li className={"px-1 py-2 "}>
                             <ul className={"flex flex-row flex-wrap gap-2"}>
-                                {g.map(member => {
+                                {group.map(member => {
                                     let classes = ""
 
                                     if (school?.isStudent(member)) {
@@ -361,6 +345,21 @@ function Results({ groupings, school }: ResultsProps) {
 
                                     return (
                                         <li
+                                            onDragStart={ev => {
+                                                ev.dataTransfer.effectAllowed =
+                                                    "move"
+
+                                                ev.dataTransfer.setData(
+                                                    "from",
+                                                    String(groupIdx),
+                                                )
+
+                                                ev.dataTransfer.setData(
+                                                    "member",
+                                                    member,
+                                                )
+                                            }}
+                                            draggable
                                             key={member}
                                             onClick={() => select(member)}
                                             className={` cursor-pointer p-1 flex flex-row gap-1 text-xs ${classes}`}
