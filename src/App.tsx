@@ -1,5 +1,4 @@
 import {
-    type ChangeEvent,
     type PropsWithChildren,
     useCallback,
     useEffect,
@@ -18,6 +17,8 @@ import v2 from "./lib/createGroupingsV2.ts"
 import v3 from "./lib/createGroupingsV3.ts"
 import v4 from "./lib/createGroupingsV4.ts"
 import v5 from "./lib/createGroupingsV5.ts"
+import { parseExistingResults } from "./lib/parseExistingResults.ts"
+import { count } from "./lib/count.ts"
 
 const KEEP_HISTORY = 15
 
@@ -45,16 +46,16 @@ export default function App() {
     )
 
     const algorithms = {
-        v1,
-        v2,
-        v3,
-        v4,
-        v5,
+        // v2,
+        // v3,
+        // v1,
+        // v4,
+        current: v5,
     }
 
     const [selectedAlgorithm, setSelectedAlgorithm] = useLocalStorage<
         keyof typeof algorithms
-    >("selected-algorithm", "v1")
+    >("selected-algorithm", "current")
 
     const createGroupings = algorithms[selectedAlgorithm]
 
@@ -86,19 +87,31 @@ export default function App() {
         teachersPerGroup,
     ])
 
-    useEffect(() => {
-        if (school && groupHistory.length === 0) {
-            createGroups()
-        }
-    }, [school, groupHistory.length, createGroups])
-
-    async function onFileSelected(event: ChangeEvent) {
-        const file = (event.target as HTMLInputElement).files?.[0]
-        if (!file) return
-        const { pairings } = parseStudentWorkbook(await file.arrayBuffer())
+    async function openClassList() {
+        const file = await openFile()
+        const { pairings } = parseStudentWorkbook(file)
         setSchool(School.create(pairings))
+    }
+
+    async function openExistingResults() {
+        const file = await openFile()
+        const groups = parseExistingResults(file) as Group[]
         setGroupHistoryCursor(-1)
-        setGroupHistory([])
+        setGroupHistory([groups])
+    }
+
+    function openFile(): Promise<ArrayBuffer> {
+        return new Promise(resolve => {
+            const input = document.createElement("input")
+            input.type = "file"
+            input.accept = ".xlsx"
+            input.onchange = async ev => {
+                const file = (ev.currentTarget as HTMLInputElement).files?.[0]
+                if (file) resolve(await file.arrayBuffer())
+            }
+
+            input.click()
+        })
     }
 
     const sortedTeachers =
@@ -176,17 +189,13 @@ export default function App() {
     return (
         <div className="flex flex-col gap-2">
             <div className={"flex flex-row gap-4"}>
-                <input
-                    type="file"
-                    onChange={onFileSelected}
-                    className="text-sm text-gray-400
-             file:py-1.5 file:px-3
-             file:rounded-md file:border-0
-             file:text-sm file:font-medium
-             file:bg-gray-800 file:text-gray-200
-             hover:file:bg-gray-700
-             cursor-pointer"
-                />
+                <NiceButton onClick={() => openClassList()}>
+                    open class list
+                </NiceButton>
+
+                <NiceButton onClick={() => openExistingResults()}>
+                    load existing results
+                </NiceButton>
 
                 {school && (
                     <>
@@ -212,7 +221,9 @@ export default function App() {
                             }
                         >
                             {Object.keys(algorithms).map(k => (
-                                <option value={k}>algorithm {k}</option>
+                                <option key={k} value={k}>
+                                    algorithm {k}
+                                </option>
                             ))}
                         </select>
 
@@ -227,7 +238,7 @@ export default function App() {
                             }
                             onClick={lookBack}
                         >
-                            go back
+                            previous result
                         </NiceButton>
 
                         <NiceButton
@@ -238,7 +249,7 @@ export default function App() {
                             }
                             onClick={lookForward}
                         >
-                            go forward
+                            next result
                         </NiceButton>
                     </>
                 )}
@@ -271,8 +282,8 @@ export default function App() {
                     </div>
                 )}
 
-                {groupings && school && (
-                    <Results groupings={groupings} school={school} />
+                {groupings && (
+                    <Results groupings={groupings} school={school ?? null} />
                 )}
             </div>
         </div>
@@ -295,7 +306,7 @@ function TeacherList({ items }: TeacherListProps) {
                 return (
                     <li
                         key={item.teacher.id}
-                        className={` gap-8 px-2 cursor-pointer odd:bg-emerald-50`}
+                        className={` gap-8 px-2 cursor-pointer odd:bg-emerald-100`}
                     >
                         {item.teacher.id}
                     </li>
@@ -321,7 +332,7 @@ function StudentsList({ items }: StudentsListProps) {
                 return (
                     <div
                         key={item.studentId}
-                        className={`px-2  even:bg-blue-50 cursor-pointer`}
+                        className={`px-2  even:bg-red-100 cursor-pointer`}
                     >
                         <li className={"col-span-4"}>{item.studentId}</li>
                     </div>
@@ -333,7 +344,7 @@ function StudentsList({ items }: StudentsListProps) {
 
 interface ResultsProps {
     groupings: Group[]
-    school: School
+    school: School | null
 }
 
 function Results({ groupings, school }: ResultsProps) {
@@ -341,59 +352,71 @@ function Results({ groupings, school }: ResultsProps) {
     const [selectedStudent, setSelectedStudent] = useState<StudentId>()
 
     function select(id: StudentId | TeacherId) {
-        if (school.isStudent(id)) {
+        if (school?.isStudent(id)) {
             setSelectedTeacher(undefined)
             if (id === selectedStudent) setSelectedStudent(undefined)
             else setSelectedStudent(id)
-        } else {
+        } else if (school?.isTeacher(id)) {
             setSelectedStudent(undefined)
             if (id === selectedTeacher) setSelectedTeacher(undefined)
             else setSelectedTeacher(id)
         }
     }
     return (
-        <ul className={"text-sm  flex flex-col flex-wrap max-h-sm gap-0.5"}>
+        <ul className={"text-sm  flex flex-col flex-wrap max-h-sm gap-2"}>
             {groupings.map((g, idx) => {
+                const numStudents = school ? count(g, school.isStudent) : 0
+                const numTeachers = school ? count(g, school.isTeacher) : 0
+                const total = g.length
                 return (
-                    <div className={"flex flex-row items-center"}>
-                        <span>
-                            {idx + 1} {g.length}
+                    <div
+                        key={g.join(",")}
+                        className={
+                            "flex flex-row items-center bg-violet-50 border-1 px-2"
+                        }
+                    >
+                        <span className={"flex gap-0.5 items-baseline"}>
+                            <span className={"font-bold"}>{idx + 1}</span>
+                            <span className={"text-xs text-grey-50"}>
+                                ({g.length})
+                            </span>
                         </span>
-                        <li key={g.join(", ")} className={"px-1 py-2 "}>
+                        <li className={"px-1 py-2 "}>
                             <ul className={"flex flex-row flex-wrap gap-2"}>
                                 {g.map(member => {
                                     let classes = ""
 
-                                    if (school.isStudent(member)) {
+                                    if (school?.isStudent(member)) {
                                         const student =
                                             school.getStudent(member)
                                         if (selectedStudent === member) {
-                                            classes = "bg-blue-100"
+                                            classes = "bg-red-200"
                                         } else if (
                                             selectedTeacher &&
                                             student.hasTeachers(selectedTeacher)
                                         ) {
-                                            classes += "bg-yellow-100"
+                                            classes += "bg-yellow-200"
                                         } else {
-                                            classes += "bg-blue-50"
+                                            classes += "bg-red-100"
                                         }
-                                    } else if (school.isTeacher(member)) {
+                                    } else if (school?.isTeacher(member)) {
                                         const teacher =
                                             school.getTeacher(member)
                                         if (selectedTeacher === member) {
-                                            classes = "bg-emerald-100"
+                                            classes = "bg-emerald-200"
                                         } else if (
                                             selectedStudent &&
                                             teacher.hasStudents(selectedStudent)
                                         ) {
-                                            classes += "bg-amber-100"
+                                            classes += "bg-amber-200"
                                         } else {
-                                            classes += "bg-emerald-50"
+                                            classes += "bg-emerald-100"
                                         }
                                     }
 
                                     return (
                                         <li
+                                            key={member}
                                             onClick={() => select(member)}
                                             className={` cursor-pointer p-1 flex flex-row gap-1 text-xs ${classes}`}
                                         >

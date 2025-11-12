@@ -229,7 +229,6 @@ export default function createGroupings(
         const sId = s.id
         const tIds = s.teachers.map(t => t.id)
 
-        const bestIdx = -1
         let bestOverlap = -1
         const candidates: number[] = []
 
