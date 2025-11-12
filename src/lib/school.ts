@@ -1,7 +1,6 @@
 import { type StudentId } from "./studentId.ts"
 import { type TeacherId } from "./teacherId.ts"
 import type { Pairing } from "./pairing.ts"
-import { cloneMapOfSets } from "./cloneMapOfSets.ts"
 
 export class School {
     private constructor(
@@ -83,24 +82,18 @@ export class School {
         teachers?: TeacherId[]
         students?: StudentId[]
     }): School {
-        const teacherToStudent = cloneMapOfSets(this.teacherToStudent)
-        const studentToTeacher = cloneMapOfSets(this.studentToTeacher)
+        const pairs = this.teacherToStudent
+            .entries()
+            .flatMap(([teacher, students]) =>
+                students.values().map(student => [teacher, student] as const),
+            )
+            .filter(
+                ([teacher, student]) =>
+                    !teachers?.includes(teacher) &&
+                    !students?.includes(student),
+            )
 
-        for (const teacher of teachers ?? []) {
-            teacherToStudent.delete(teacher)
-            for (const teacherList of studentToTeacher.values()) {
-                teacherList.delete(teacher)
-            }
-        }
-
-        for (const student of students ?? []) {
-            studentToTeacher.delete(student)
-            for (const studentList of teacherToStudent.values()) {
-                studentList.delete(student)
-            }
-        }
-
-        return new School(teacherToStudent, studentToTeacher)
+        return School.create([...pairs])
     }
 
     getTeachers(s: StudentId): TeacherId[] {
